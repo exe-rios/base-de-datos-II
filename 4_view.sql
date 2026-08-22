@@ -1,4 +1,3 @@
--- Descripción: 5 Vistas exactas solicitadas en el Anexo del TP LogiTrack.
 
 -- 1. Reporte de Ruta Histórica Dinámica
 -- Objetivo: Reconstruir el trayecto encadenando puntos cronológicamente.
@@ -9,8 +8,8 @@ SELECT
     timestamp,
     ST_AsText(coordenadas) AS coordenadas_txt,
     velocidad,
-    -- Calcula la distancia en metros con el punto anterior y lo pasa a KM
-    COALESCE(ST_DistanceSphere(coordenadas, LAG(coordenadas) OVER (PARTITION BY id_viaje ORDER BY timestamp)) / 1000.0, 0) AS distancia_km_tramo
+    -- Calcula la distancia en metros con el punto anterior y lo pasa a KM (Casteado a NUMERIC)
+    COALESCE((ST_DistanceSphere(coordenadas, LAG(coordenadas) OVER (PARTITION BY id_viaje ORDER BY timestamp)) / 1000.0)::NUMERIC, 0) AS distancia_km_tramo
 FROM telemetria;
 
 
@@ -36,16 +35,16 @@ SELECT
     (nivel_anterior - nivel_actual) AS diferencia_litros
 FROM lecturas
 WHERE nivel_anterior IS NOT NULL 
-  AND (nivel_anterior - nivel_actual) > (nivel_anterior * 0.10) -- Caída mayor al 10%
-  AND EXTRACT(EPOCH FROM (fecha_y_hora - tiempo_anterior))/60 <= 5; -- En 5 minutos o menos
+  AND (nivel_anterior - nivel_actual) > (nivel_anterior * 0.10) 
+  AND EXTRACT(EPOCH FROM (fecha_y_hora - tiempo_anterior))/60 <= 5; 
 
 
--- 3. Reporte de Productividad y Kilometraje (CORREGIDO)
+-- 3. Reporte de Productividad y Kilometraje
+-- Objetivo: KM con carga vs KM vacío basado en el sensor JSONB.
 CREATE OR REPLACE VIEW vw_productividad_km AS
 WITH tramos AS (
     SELECT 
         v.id_camion,
-        -- ACÁ ESTÁ LA SOLUCIÓN: Agregamos ::NUMERIC al final del cálculo espacial
         COALESCE((ST_DistanceSphere(t.coordenadas, LAG(t.coordenadas) OVER(PARTITION BY t.id_viaje ORDER BY t.timestamp)) / 1000.0)::NUMERIC, 0) AS dist_tramo,
         COALESCE((t.datos_sensor->>'peso_carga_kg')::NUMERIC, 0) AS peso
     FROM telemetria t
@@ -89,14 +88,15 @@ FROM ultima_posicion up
 JOIN zona_logistica z ON z.tipo_zona = 'Restringida' 
 AND ST_Within(up.ultima_posicion, z.perimetro);
 
+
 -- 5. Reporte de Estado de Sensores IoT
--- Objetivo: Monitorear variables críticas desde el JSONB (ej. temp de termógrafo).
+-- Objetivo: Monitorear variables críticas desde el JSONB.
 CREATE OR REPLACE VIEW vw_estado_sensores AS
 SELECT 
     v.id_camion,
     t.timestamp,
     'Temperatura Termografo (C)' AS sensor_nombre,
-    t.datos_sensor->>'temp_termografo_c' AS valor_sensor
+    (t.datos_sensor->>'temp_termografo_c')::NUMERIC AS valor_sensor
 FROM telemetria t
 JOIN viaje v ON t.id_viaje = v.id_viaje
 WHERE t.datos_sensor ? 'temp_termografo_c'
@@ -105,7 +105,7 @@ SELECT
     v.id_camion,
     t.timestamp,
     'Presión Aceite (PSI)' AS sensor_nombre,
-    t.datos_sensor->>'presion_aceite_psi' AS valor_sensor
+    (t.datos_sensor->>'presion_aceite_psi')::NUMERIC AS valor_sensor
 FROM telemetria t
 JOIN viaje v ON t.id_viaje = v.id_viaje
 WHERE t.datos_sensor ? 'presion_aceite_psi';
