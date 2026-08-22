@@ -45,25 +45,27 @@ CREATE TABLE viaje (
     id_chofer INT NOT NULL,
     fecha_inicio TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     fecha_fin TIMESTAMP,
-    origen_destino_json JSONB,
+    origen_destino JSONB,
     estado_viaje VARCHAR(50) DEFAULT 'Activo',
     ruta GEOMETRY(LineString, 4326),
     CONSTRAINT fk_viaje_camion FOREIGN KEY (id_camion) REFERENCES camion(id_camion),
     CONSTRAINT fk_viaje_chofer FOREIGN KEY (id_chofer) REFERENCES chofer(id_chofer)
 );
 
--- Tabla intermedia para la relación "guarda" (Hoja de Ruta) entre Viaje y Zona (N a N)
-CREATE TABLE viaje_zona_logistica (
+-- Tabla intermedia para la relación (Hoja de Ruta) entre Viaje y Zona
+CREATE TABLE hoja_de_ruta (
+    id_hoja_ruta INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     id_viaje INT NOT NULL,
     id_zona INT NOT NULL,
-    PRIMARY KEY (id_viaje, id_zona),
-    CONSTRAINT fk_vz_viaje FOREIGN KEY (id_viaje) REFERENCES viaje(id_viaje) ON DELETE CASCADE,
-    CONSTRAINT fk_vz_zona FOREIGN KEY (id_zona) REFERENCES zona_logistica(id_zona) ON DELETE CASCADE
+    orden INT NOT NULL, 
+    CONSTRAINT fk_hoja_viaje FOREIGN KEY (id_viaje) REFERENCES viaje(id_viaje) ON DELETE CASCADE,
+    CONSTRAINT fk_hoja_zona FOREIGN KEY (id_zona) REFERENCES zona_logistica(id_zona) ON DELETE CASCADE,
+    CONSTRAINT uq_viaje_orden UNIQUE (id_viaje, orden) -- Evita que haya dos paradas con el mismo número de orden en el mismo viaje
 );
 
 -- 6. Tabla Telemetria
 CREATE TABLE telemetria (
-    id_telemetria BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_telemetria INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     id_viaje INT NOT NULL,
     timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     coordenadas GEOMETRY(Point, 4326) NOT NULL,
@@ -86,7 +88,7 @@ CREATE TABLE incidencias (
     CONSTRAINT fk_incidencia_telemetria FOREIGN KEY (id_telemetria) REFERENCES telemetria(id_telemetria) ON DELETE SET NULL
 );
 
--- ÍNDICES PARA OPTIMIZACIÓN
+-- indices para optimizar
 
 CREATE INDEX idx_viaje_camion ON viaje(id_camion);
 CREATE INDEX idx_viaje_chofer ON viaje(id_chofer);
@@ -94,9 +96,12 @@ CREATE INDEX idx_telemetria_viaje ON telemetria(id_viaje);
 CREATE INDEX idx_incidencias_viaje ON incidencias(id_viaje);
 CREATE INDEX idx_telemetria_timestamp ON telemetria(timestamp);
 
+CREATE INDEX idx_hoja_viaje ON hoja_de_ruta(id_viaje);
+CREATE INDEX idx_hoja_zona ON hoja_de_ruta(id_zona);
+
 CREATE INDEX idx_zona_perimetro ON zona_logistica USING GIST (perimetro);
 CREATE INDEX idx_telemetria_coordenadas ON telemetria USING GIST (coordenadas);
 CREATE INDEX idx_viaje_ruta ON viaje USING GIST (ruta);
 
 CREATE INDEX idx_telemetria_datos_sensor ON telemetria USING GIN (datos_sensor);
-CREATE INDEX idx_viaje_origen_destino ON viaje USING GIN (origen_destino_json);
+CREATE INDEX idx_viaje_origen_destino ON viaje USING GIN (origen_destino);
